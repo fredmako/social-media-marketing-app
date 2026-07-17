@@ -1,0 +1,85 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Tenant {
+  id         String     @id @default(uuid())
+  name       String
+  brandVoice String?
+  logoUrl    String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  users      User[]
+  products   Product[]
+  campaigns  Campaign[]
+}
+
+model User {
+  id       String @id @default(uuid())
+  email    String @unique
+  name     String
+  role     String // ADMIN, EDITOR
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id             String        @id @default(uuid())
+  name           String
+  description    String
+  targetAudience String
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  adCreatives    AdCreative[]
+}
+
+model Campaign {
+  id       String   @id @default(uuid())
+  name     String
+  status   String   // DRAFT, ACTIVE, COMPLETED
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  posts    Post[]
+}
+
+model AdCreative {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  headline  String
+  bodyText  String
+  hashtags  String   // comma separated
+  imageUrl  String?
+  videoUrl  String?
+  posts     Post[]
+}
+
+model Post {
+  id             String              @id @default(uuid())
+  campaignId     String
+  campaign       Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adCreativeId   String
+  adCreative     AdCreative          @relation(fields: [adCreativeId], references: [id], onDelete: Cascade)
+  platform       String              // x, linkedin, facebook, discord, whatsapp, tiktok
+  status         String              // SCHEDULED, PUBLISHED, FAILED
+  scheduledTime  DateTime
+  publishedTime  DateTime?
+  platformPostId String?
+  errorMessage   String?
+  analytics      AnalyticsSnapshot[]
+}
+
+model AnalyticsSnapshot {
+  id         String   @id @default(uuid())
+  postId     String
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  views      Int
+  likes      Int
+  shares     Int
+  recordedAt DateTime @default(now())
+}
