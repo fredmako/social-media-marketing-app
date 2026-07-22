@@ -88,6 +88,8 @@ export default function App() {
   const [imageUrl, setImageUrl] = useState<string>('https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=600');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['x', 'linkedin']);
   const [scheduledTime, setScheduledTime] = useState<string>('');
+  const [leads, setLeads] = useState<Array<{ id: string; name?: string; email?: string; score?: number; status?: string; source?: string; createdAt?: string }>>([]);
+  void leads;
 
   // Loaders
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -614,6 +616,64 @@ export default function App() {
                       <tr>
                         <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
                           No campaigns found. Go to "Campaign Planner" to create one!
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginTop: '1rem' }}>
+              <div className="metric-card glass glass-hover">
+                <div className="metric-label">Total Leads</div>
+                <div className="metric-val">{leads.length}</div>
+                <div className="metric-badge">Pipeline</div>
+              </div>
+              <div className="metric-card glass glass-hover">
+                <div className="metric-label">New Leads</div>
+                <div className="metric-val">{leads.filter(l => l.status === 'new').length}</div>
+                <div className="metric-badge">Needs Follow-up</div>
+              </div>
+              <div className="metric-card glass glass-hover">
+                <div className="metric-label">Avg Lead Score</div>
+                <div className="metric-val">{leads.length ? Math.round(leads.reduce((sum, l) => sum + (l.score || 0), 0) / leads.length) : 0}</div>
+                <div className="metric-badge">Quality</div>
+              </div>
+            </div>
+
+            <div className="table-card glass" style={{ marginTop: '1.5rem' }}>
+              <div className="table-header">
+                <h3 className="table-title">Lead Intake</h3>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="post-table">
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      <th>Email</th>
+                      <th>Status</th>
+                      <th>Score</th>
+                      <th>Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leads.length ? leads.map((lead) => (
+                      <tr key={lead.id}>
+                        <td style={{ fontWeight: 600 }}>{lead.source || '-'}</td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{lead.email || '-'}</td>
+                        <td>
+                          <span className={`badge-status badge-${(lead.status || 'new').toLowerCase()}`}>
+                            {lead.status || 'new'}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 700 }}>{lead.score ?? 0}</td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{lead.createdAt ? new Date(lead.createdAt).toLocaleString() : '-'}</td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                          No leads yet.
                         </td>
                       </tr>
                     )}
