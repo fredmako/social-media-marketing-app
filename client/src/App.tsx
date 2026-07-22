@@ -76,6 +76,10 @@ export default function App() {
   const [productDescription, setProductDescription] = useState<string>('');
   const [targetAudience, setTargetAudience] = useState<string>('');
   const [brandVoice, setBrandVoice] = useState<string>('');
+  const [offerType, setOfferType] = useState<string>('');
+  const [primaryPain, setPrimaryPain] = useState<string>('');
+  const [primaryGain, setPrimaryGain] = useState<string>('');
+  const [psychologicalHook, setPsychologicalHook] = useState<string>('curiosity');
 
   // Generated results
   const [headline, setHeadline] = useState<string>('Your Headline Appears Here');
@@ -142,6 +146,7 @@ export default function App() {
 
     // Initial Analytics Fetch
     fetchAnalytics();
+    fetchLeads();
 
     // Setup polling every 5 seconds to get live views updates
     const interval = setInterval(fetchAnalytics, 5000);
@@ -173,6 +178,16 @@ export default function App() {
       .catch(err => console.error('Error loading MCP status:', err));
   };
 
+  const fetchLeads = () => {
+    if (!selectedTenantId) return;
+    fetch(`${API_URL}/leads?tenantId=${selectedTenantId}`)
+      .then(res => res.json())
+      .then((data: any[]) => {
+        setLeads(data);
+      })
+      .catch(err => console.error('Error loading leads:', err));
+  };
+
   const handleProductChange = (productId: string) => {
     setFormProductId(productId);
     const prod = products.find(p => p.id === productId);
@@ -191,14 +206,18 @@ export default function App() {
     setIsGenerating(true);
     try {
       const activeTenant = tenants.find(t => t.id === selectedTenantId);
-      const res = await fetch(`${API_URL}/generate-ad`, {
+      const res = await fetch(`${API_URL}/generate-ad-from-theme`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productName,
           productDescription,
           targetAudience,
-          brandVoice: brandVoice || activeTenant?.brandVoice || 'Professional'
+          brandVoice: brandVoice || activeTenant?.brandVoice || 'Professional',
+          psychologicalHook,
+          offerType: offerType || productName,
+          primaryPain,
+          primaryGain
         })
       });
       const data = await res.json();
@@ -670,6 +689,39 @@ export default function App() {
                     onChange={(e) => setBrandVoice(e.target.value)}
                     placeholder="e.g. Playful & humorous, or Educational" 
                   />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">Offer Type</label>
+                    <select className="form-input" value={offerType} onChange={(e) => setOfferType(e.target.value)}>
+                      <option value="">Select offer type</option>
+                      <option value="hmis">Hospital / Clinic System</option>
+                      <option value="saas">SaaS Tool</option>
+                      <option value="service">Service / Agency</option>
+                      <option value="product">Physical / Digital Product</option>
+                      <option value="event">Event / Webinar</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Psychology Hook</label>
+                    <select className="form-input" value={psychologicalHook} onChange={(e) => setPsychologicalHook(e.target.value)}>
+                      <option value="curiosity">Curiosity Gap</option>
+                      <option value="loss_aversion">Loss Aversion</option>
+                      <option value="social_proof">Social Proof</option>
+                      <option value="authority">Authority</option>
+                      <option value="problem_solution_proof">Problem → Solution → Proof</option>
+                      <option value="shareable_hook">Shareable Hook / Listicle</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Primary Pain</label>
+                    <input className="form-input" value={primaryPain} onChange={(e) => setPrimaryPain(e.target.value)} placeholder="e.g. long queues and missed invoices" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Primary Gain</label>
+                    <input className="form-input" value={primaryGain} onChange={(e) => setPrimaryGain(e.target.value)} placeholder="e.g. faster billing and happier patients" />
+                  </div>
                 </div>
 
                 <div style={{ marginBottom: '1.5rem' }}>
