@@ -78,6 +78,51 @@ db.exec(`
     recordedAt TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(postId) REFERENCES Post(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS BusinessProfile (
+    id TEXT PRIMARY KEY,
+    tenantId TEXT NOT NULL,
+    productName TEXT NOT NULL,
+    description TEXT NOT NULL,
+    targetAudience TEXT NOT NULL,
+    brandVoice TEXT,
+    offerType TEXT,
+    primaryPain TEXT,
+    primaryGain TEXT,
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(tenantId) REFERENCES Tenant(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS Lead (
+    id TEXT PRIMARY KEY,
+    tenantId TEXT NOT NULL,
+    name TEXT,
+    email TEXT,
+    phone TEXT,
+    source TEXT,
+    score INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'new',
+    notes TEXT,
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(tenantId) REFERENCES Tenant(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS CampaignExperiment (
+    id TEXT PRIMARY KEY,
+    tenantId TEXT NOT NULL,
+    campaignId TEXT NOT NULL,
+    psychologicalHook TEXT NOT NULL,
+    channel TEXT,
+    status TEXT DEFAULT 'active',
+    impressions INTEGER DEFAULT 0,
+    clicks INTEGER DEFAULT 0,
+    demoRequests INTEGER DEFAULT 0,
+    leads INTEGER DEFAULT 0,
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(tenantId) REFERENCES Tenant(id) ON DELETE CASCADE,
+    FOREIGN KEY(campaignId) REFERENCES Campaign(id) ON DELETE CASCADE
+  );
 `);
 
 // Expose query helper methods that mimic basic ORM operations
@@ -246,6 +291,42 @@ export const dbHelper = {
         WHERE c.tenantId = ?
         ORDER BY s.recordedAt ASC
       `);
+      return stmt.all(tenantId);
+    }
+  },
+  businessProfile: {
+    create: (data: { tenantId: string; productName: string; description: string; targetAudience: string; brandVoice?: string; offerType?: string; primaryPain?: string; primaryGain?: string }) => {
+      const id = randomUUID();
+      const stmt = db.prepare('INSERT INTO BusinessProfile (id, tenantId, productName, description, targetAudience, brandVoice, offerType, primaryPain, primaryGain) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      stmt.run(id, data.tenantId, data.productName, data.description, data.targetAudience, data.brandVoice || null, data.offerType || null, data.primaryPain || null, data.primaryGain || null);
+      return { id, ...data };
+    },
+    findMany: (tenantId: string) => {
+      const stmt = db.prepare('SELECT * FROM BusinessProfile WHERE tenantId = ?');
+      return stmt.all(tenantId);
+    }
+  },
+  leads: {
+    create: (data: { tenantId: string; name?: string; email?: string; phone?: string; source?: string; score?: number; status?: string; notes?: string }) => {
+      const id = randomUUID();
+      const stmt = db.prepare('INSERT INTO Lead (id, tenantId, name, email, phone, source, score, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      stmt.run(id, data.tenantId, data.name || null, data.email || null, data.phone || null, data.source || null, data.score || 0, data.status || 'new', data.notes || null);
+      return { id, ...data };
+    },
+    findMany: (tenantId: string) => {
+      const stmt = db.prepare('SELECT * FROM Lead WHERE tenantId = ? ORDER BY createdAt DESC');
+      return stmt.all(tenantId);
+    }
+  },
+  campaignExperiment: {
+    create: (data: { tenantId: string; campaignId: string; psychologicalHook: string; channel?: string; status?: string }) => {
+      const id = randomUUID();
+      const stmt = db.prepare('INSERT INTO CampaignExperiment (id, tenantId, campaignId, psychologicalHook, channel, status) VALUES (?, ?, ?, ?, ?, ?)');
+      stmt.run(id, data.tenantId, data.campaignId, data.psychologicalHook, data.channel || null, data.status || 'active');
+      return { id, ...data };
+    },
+    findMany: (tenantId: string) => {
+      const stmt = db.prepare('SELECT * FROM CampaignExperiment WHERE tenantId = ?');
       return stmt.all(tenantId);
     }
   }

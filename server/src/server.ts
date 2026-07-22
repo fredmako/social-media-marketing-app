@@ -373,6 +373,122 @@ app.get('/api/analytics', (req, res) => {
   }
 });
 
+// 7. Business Profiles
+app.post('/api/business-profiles', (req, res) => {
+  try {
+    const { tenantId, productName, description, targetAudience, brandVoice, offerType, primaryPain, primaryGain } = req.body;
+    const profile = dbHelper.businessProfile.create({ tenantId, productName, description, targetAudience, brandVoice, offerType, primaryPain, primaryGain });
+    res.status(201).json(profile);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/business-profiles', (req, res) => {
+  try {
+    const { tenantId } = req.query;
+    if (!tenantId) return res.status(400).json({ error: 'tenantId required' });
+    const profiles = dbHelper.businessProfile.findMany(String(tenantId));
+    res.json(profiles);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8. Leads
+app.post('/api/leads', (req, res) => {
+  try {
+    const { tenantId, name, email, phone, source, score, status, notes } = req.body;
+    const lead = dbHelper.leads.create({ tenantId, name, email, phone, source, score, status, notes });
+    res.status(201).json(lead);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/leads', (req, res) => {
+  try {
+    const { tenantId } = req.query;
+    if (!tenantId) return res.status(400).json({ error: 'tenantId required' });
+    const leads = dbHelper.leads.findMany(String(tenantId));
+    res.json(leads);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 9. Campaign Experiments
+app.post('/api/campaigns/:campaignId/experiments', (req, res) => {
+  try {
+    const { campaignId } = req.params;
+    const { tenantId, psychologicalHook, channel, status } = req.body;
+    const experiment = dbHelper.campaignExperiment.create({ tenantId, campaignId, psychologicalHook, channel, status });
+    res.status(201).json(experiment);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/campaigns/:campaignId/experiments', (req, res) => {
+  try {
+    const { campaignId } = req.params;
+    const { tenantId } = req.query;
+    if (!tenantId) return res.status(400).json({ error: 'tenantId required' });
+    const all = dbHelper.campaignExperiment.findMany(String(tenantId));
+    const items = all.filter((e: any) => e.campaignId === campaignId);
+    res.json(items);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 10. Theme-Based Ad Generation (psychology-driven, product-agnostic)
+app.post('/api/generate-ad-from-theme', async (req, res) => {
+  try {
+    const { productName, productDescription, targetAudience, brandVoice, psychologicalHook, offerType, primaryPain, primaryGain } = req.body;
+    const hook = psychologicalHook || 'curiosity';
+    const pain = primaryPain || 'wasted time and missed opportunities';
+    const gain = primaryGain || 'faster results and less friction';
+    
+    // Dynamic prompt engineering based on selected psychology hook
+    const hookPrompts: Record<string, { headline: string; body: string }> = {
+      curiosity: {
+        headline: `What if ${productName} changed everything?`,
+        body: `Most ${targetAudience} never expect this outcome. ${productName} turns ${pain} into ${gain}.`
+      },
+      loss_aversion: {
+        headline: `Don't let ${pain} keep costing you.`,
+        body: `Every day without the right system is another day of losses. ${productName} stops the leak and protects your top line.`
+      },
+      social_proof: {
+        headline: `Top performers choose ${productName}.`,
+        body: `High-performing teams already made the switch. Now they ship faster, with fewer mistakes.`
+      },
+      authority: {
+        headline: `The hidden reason most teams still struggle.`,
+        body: `Industry leaders follow a simple framework. ${productName} puts that framework on autopilot.`
+      },
+      problem_solution_proof: {
+        headline: `Still dealing with ${pain}?`,
+        body: `${productName} replaces the old mess with a single workflow. Less overhead, more output.`
+      },
+      shareable_hook: {
+        headline: `5 reasons ${targetAudience} are switching systems now.`,
+        body: `#1: It removes ${pain}. #2: It unlocks ${gain}. #3: It pays for itself.`
+      }
+    };
+
+    const selected = hookPrompts[hook] || hookPrompts.curiosity;
+    const headline = selected.headline;
+    const bodyText = `${selected.body} ${productDescription}`;
+    const hashtags = `#${offerType || productName.replace(/\s+/g, '')}, #growth, #automation`;
+
+    res.json({ headline, bodyText, hashtags, psychologicalHook: hook });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Run server
 app.listen(port, async () => {
   console.log(`[Express Server] Server running at http://localhost:${port}`);
