@@ -1,7 +1,25 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
+
+async function signToken(payload: Record<string, unknown>) {
+  return new SignJWT(payload as any)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('7d')
+    .sign(new TextEncoder().encode(JWT_SECRET));
+}
+
+async function verifyToken(token: string) {
+  try {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(JWT_SECRET));
+    return payload as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 import { dbHelper } from './db.js';
 import { generateAdCreative } from './services/aiGenerator.js';
 import { startScheduler } from './services/scheduler.js';
@@ -354,7 +372,7 @@ app.get('/auth/google/callback', async (req, res) => {
       const firstTenant = dbHelper.tenants.findMany()[0];
       tenantId = firstTenant.id;
     }
-    const token = jwt.sign({ sub: userInfo.sub, email: userInfo.email, name: userInfo.name, tenantId }, process.env.JWT_SECRET || 'supersecret', { expiresIn: '7d' });
+    const token = await signToken({ sub: userInfo.sub, email: userInfo.email, name: userInfo.name, tenantId });
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/callback?token=${encodeURIComponent(token)}`);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -366,10 +384,11 @@ app.post('/auth/verify', (req, res) => {
   const token = auth.replace('Bearer ', '').trim();
   if (!token) return res.status(401).json({ authenticated: false });
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecret') as any;
-    res.json({ authenticated: true, user: { email: decoded.email, name: decoded.name, tenantId: decoded.tenantId } });
-  } catch (err: any) {
-    res.status(401).json({ authenticated: false, error: err.message });
+    const decoded = await verifyToken(token);
+    if (!decoded) return res.status(401).json({ authenticated: false });
+    res.json({ authenticated: true, user: { email: (decoded as any).email, name: (decoded as any).name, tenantId: (decoded as any).tenantId } });
+  } catch {
+    return res.status(401).json({ authenticated: false });
   }
 });
 
