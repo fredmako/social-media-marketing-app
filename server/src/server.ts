@@ -10,8 +10,40 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
+const knownMcpServers = [
+  { id: 'mock-social', name: 'Mock Social Media MCP', url: 'http://127.0.0.1:3001/sse' },
+  { id: 'supabase', name: 'Supabase', url: process.env.SUPABASE_MCP_URL || '' },
+  { id: 'vercel', name: 'Vercel', url: process.env.VERCEL_MCP_URL || '' },
+  { id: 'notion', name: 'Notion', url: process.env.NOTION_MCP_URL || '' },
+  { id: 'digitalocean', name: 'DigitalOcean', url: process.env.DO_MCP_URL || '' },
+  { id: 'jarvis', name: 'Jarvis', url: process.env.JARVIS_MCP_URL || '' }
+];
+
 app.use(cors());
 app.use(express.json());
+
+app.get('/health', (req, res) => {
+  res.json({ ok: true, ts: new Date().toISOString() });
+});
+
+async function checkMcpStatus(server) {
+  if (!server.url) return { ...server, status: 'disabled', detail: 'URL not configured' };
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(server.url, { method: 'GET', signal: controller.signal });
+    clearTimeout(timeout);
+    return { ...server, status: res && (res.status === 405 || res.ok) ? 'online' : 'error', detail: `HTTP ${res.status}` };
+  } catch (err: any) {
+    return { ...server, status: 'offline', detail: err?.message || 'unreachable' };
+  }
+}
+
+app.get('/api/mcp/status', async (req, res) => {
+  const results = await Promise.all(knownMcpServers.map(checkMcpStatus));
+  const connected = results.filter(r => r.status === 'online').length;
+  res.json({ snapshots: results, summary: { total: results.length, connected } });
+});
 
 // Seeding function on startup using native SQLite helpers
 async function seedInitialData() {

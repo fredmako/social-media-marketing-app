@@ -65,6 +65,8 @@ export default function App() {
     whatsapp: false
   });
 
+  const [mcpSnapshots, setMcpSnapshots] = useState<Array<{ id: string; name: string; url: string; status: string; detail: string }>>([]);
+
   // Campaign Creator Form
   const [formProductId, setFormProductId] = useState<string>('');
   const [formCampaignMode, setFormCampaignMode] = useState<'new' | 'existing'>('existing');
@@ -87,7 +89,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isDeploying, setIsDeploying] = useState<boolean>(false);
 
-  const API_URL = 'http://localhost:3000/api';
+  const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000/api';
 
   // Fetch tenants on mount
   useEffect(() => {
@@ -146,6 +148,12 @@ export default function App() {
     return () => clearInterval(interval);
   }, [selectedTenantId]);
 
+  useEffect(() => {
+    if (activeTab === 'accounts') {
+      fetchMcpStatus();
+    }
+  }, [activeTab]);
+
   const fetchAnalytics = () => {
     if (!selectedTenantId) return;
     fetch(`${API_URL}/analytics?tenantId=${selectedTenantId}`)
@@ -154,6 +162,15 @@ export default function App() {
         setAnalytics(data);
       })
       .catch(err => console.error('Error loading analytics:', err));
+  };
+
+  const fetchMcpStatus = () => {
+    fetch(`${API_URL}/mcp/status`)
+      .then(res => res.json())
+      .then((data: any) => {
+        setMcpSnapshots(data.snapshots || []);
+      })
+      .catch(err => console.error('Error loading MCP status:', err));
   };
 
   const handleProductChange = (productId: string) => {
@@ -302,6 +319,7 @@ export default function App() {
     const width = 500;
     const height = 200;
     const padding = 20;
+    const labelEvery = Math.max(1, Math.floor(analytics.timeline.length / 8))
 
     const views = analytics.timeline.map(t => t.views);
     const minViews = 0;
@@ -336,13 +354,15 @@ export default function App() {
         {/* Line */}
         <path d={pathData} fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" />
 
-        {/* Interactive Dots */}
+        {/* Interactive Dots + Labels */}
         {points.map((p, idx) => (
           <g key={idx}>
-            <circle cx={p.x} cy={p.y} r="5" fill="var(--secondary)" stroke="#fff" strokeWidth="1.5" />
-            <text x={p.x} y={p.y - 10} fill="var(--text-primary)" fontSize="8" fontWeight="700" textAnchor="middle">
-              {p.views}
-            </text>
+            <circle cx={p.x} cy={p.y} r={idx % labelEvery === 0 ? 5 : 3} fill="var(--secondary)" stroke="#fff" strokeWidth={idx % labelEvery === 0 ? 1.5 : 1} />
+            {idx % labelEvery === 0 && (
+              <text x={p.x} y={p.y - 10} fill="var(--text-primary)" fontSize="8" fontWeight="700" textAnchor="middle">
+                {p.views}
+              </text>
+            )}
           </g>
         ))}
       </svg>
@@ -812,10 +832,49 @@ export default function App() {
         {activeTab === 'accounts' && (
           <div>
             <div style={{ marginBottom: '2rem' }}>
-              <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>MCP Client & Gateway Settings</h2>
+              <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Project Services & MCP Gateway</h2>
               <p style={{ color: 'var(--text-secondary)' }}>
-                This portal connects the AI campaign scheduler with the remote Model Context Protocol (MCP) server on DigitalOcean. 
-                Below are the integration pipelines for individual tenant channels.
+                Active campaign channels plus configured Hermes MCP services. Use this panel to confirm which integrations are enabled for this project.
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '2.5rem' }}>
+              {[
+                { id: 'supabase', name: 'Supabase', desc: 'Migrations, auth, storage, and DB operations.' },
+                { id: 'vercel', name: 'Vercel', desc: 'Deployments, project metadata, and domain checks.' },
+                { id: 'notion', name: 'Notion', desc: 'Pages, databases, and task workspace sync.' },
+                { id: 'digitalocean', name: 'DigitalOcean', desc: 'Droplet and app platform resource management.' },
+                { id: 'figma', name: 'Figma', desc: 'Design tokens and UI asset retrieval.' },
+                { id: 'jarvis', name: 'Jarvis', desc: 'Voice I/O and browser-driven conversation layer.' }
+              ].map(item => {
+                const snap = mcpSnapshots.find(s => s.id === item.id);
+                const status = snap?.status || 'unknown';
+                const detail = snap?.detail || 'idle';
+                return (
+                  <div key={item.id} className="account-card glass glass-hover">
+                    <div className="account-icon" style={{ backgroundColor: 'rgba(148,163,184,.15)' }}>
+                      {item.name.charAt(0)}
+                    </div>
+                    <h3 style={{ fontWeight: 700 }}>{item.name}</h3>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>{item.desc}</div>
+                    <div
+                      className="account-status"
+                      style={{
+                        backgroundColor: status === 'online' ? 'rgba(20, 184, 166, 0.15)' : status === 'disabled' ? 'rgba(255,255,255,0.05)' : 'rgba(239, 68, 68, 0.12)',
+                        color: status === 'online' ? 'var(--accent)' : status === 'disabled' ? 'var(--text-muted)' : '#ef4444'
+                      }}
+                    >
+                      {status === 'online' ? `✓ Online ${detail}` : status === 'disabled' ? '○ Not configured' : `✗ ${status}: ${detail}`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ marginBottom: '2rem' }}>
+              <h2 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Connected Social Tools</h2>
+              <p style={{ color: 'var(--text-secondary)' }}>
+                Per-tenant publishing channels for this workspace.
               </p>
             </div>
 
