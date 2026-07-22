@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
 import { dbHelper } from './db.js';
 import { generateAdCreative } from './services/aiGenerator.js';
 import { startScheduler } from './services/scheduler.js';
@@ -308,6 +309,67 @@ app.post('/api/generate-ad-from-theme', async (req, res) => {
     res.json({ headline, bodyText, hashtags, psychologicalHook: hook });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Google Auth (OAuth2 consent screen + login) ---
+app.get('/auth/google/url', (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'GOOGLE_CLIENT_ID not configured' });
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${process.env.BACKEND_URL || 'http://localhost:3002'}/auth/google/callback`;
+  const state = Math.random().toString(36).slice(2);
+  const scope = 'openid profile email';
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&state=${state}&access_type=offline&prompt=consent`;
+  res.json({ url, state });
+});
+
+app.get('/auth/google/callback', async (req, res) => {
+  const code = String(req.query.code || '');
+  if (!code) return res.status(400).json({ error: 'Missing code' });
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${process.env.BACKEND_URL || 'http://localhost:3002'}/auth/google/callback`;
+  try {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: 'authorization_code' })
+    });
+    if (!tokenRes.ok) {
+      const text = await tokenRes.text();
+      return res.status(400).json({ error: 'Token exchange failed', detail: text });
+    }
+    const tokenData = await tokenRes.json();
+    const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    const userInfo = await userInfoRes.json();
+    const tenantCount = dbHelper.tenants.count();
+    let tenantId: string | null = null;
+    if (tenantCount === 0) {
+      const tenant = dbHelper.tenants.create({ name: `${userInfo.name || userInfo.email}'s Workspace`, brandVoice: 'Custom' });
+      tenantId = tenant.id;
+      dbHelper.users.create({ email: userInfo.email, name: userInfo.name, role: 'ADMIN', tenantId });
+    } else {
+      const firstTenant = dbHelper.tenants.findMany()[0];
+      tenantId = firstTenant.id;
+    }
+    const token = jwt.sign({ sub: userInfo.sub, email: userInfo.email, name: userInfo.name, tenantId }, process.env.JWT_SECRET || 'supersecret', { expiresIn: '7d' });
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/callback?token=${encodeURIComponent(token)}`);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/auth/verify', (req, res) => {
+  const auth = req.headers.authorization || '';
+  const token = auth.replace('Bearer ', '').trim();
+  if (!token) return res.status(401).json({ authenticated: false });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecret') as any;
+    res.json({ authenticated: true, user: { email: decoded.email, name: decoded.name, tenantId: decoded.tenantId } });
+  } catch (err: any) {
+    res.status(401).json({ authenticated: false, error: err.message });
   }
 });
 

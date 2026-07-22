@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
+interface User {
+  email: string;
+  name: string;
+  tenantId: string;
+}
+
 interface Tenant {
   id: string;
   name: string;
@@ -91,37 +97,143 @@ export default function App() {
   const [leads, setLeads] = useState<Array<{ id: string; name?: string; email?: string; score?: number; status?: string; source?: string; createdAt?: string }>>([]);
   void leads;
 
+  // Auth State
+  const [authToken, setAuthToken] = useState<string>(localStorage.getItem('smm_auth_token') || '');
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(!!authToken);
+  const [authError, setAuthError] = useState<string>('');
+
+  const authHeaders = () => ({ 'Authorization': `Bearer ${authToken}` } as Record<string, string>);
+
+  const startGoogleLogin = () => {
+    const clientId = (import.meta as any)?.env?.VITE_GOOGLE_CLIENT_ID || '';
+    if (!clientId) {
+      setAuthError('Google sign-in is not configured yet.');
+      return;
+    }
+    setAuthError('');
+    fetch(`${API_URL}/auth/google/url`)
+      .then(res => res.json())
+      .then((data: any) => data?.url ? window.location.href = data.url : setAuthError('Could not start Google sign-in.'))
+      .catch(() => setAuthError('Failed to reach auth endpoint.'));
+  };
+
+  const logout = () => {
+    localStorage.removeItem('smm_auth_token');
+    setAuthToken('');
+    setUser(null);
+  };
+
+  const verifyAuth = () => {
+    const token = localStorage.getItem('smm_auth_token') || '';
+    if (!token) {
+      setAuthLoading(false);
+      return;
+    }
+    setAuthToken(token);
+    fetch(`${API_URL}/auth/verify`, { headers: { Authorization: token } })
+      .then(res => res.json())
+      .then((data: any) => {
+        if (data?.authenticated && data?.user) {
+          setUser(data.user as User);
+        } else {
+          localStorage.removeItem('smm_auth_token');
+          setAuthToken('');
+          setUser(null);
+        }
+      })
+      .catch(() => {
+        localStorage.removeItem('smm_auth_token');
+        setAuthToken('');
+        setUser(null);
+      })
+      .finally(() => setAuthLoading(false));
+  };
+
+  // Auth helpers
+  const startGoogleLogin = () => {
+    const clientId = (import.meta as any)?.env?.VITE_GOOGLE_CLIENT_ID || '';
+    if (!clientId) {
+      setAuthError('Google sign-in is not configured yet.');
+      return;
+    }
+    setAuthError('');
+    fetch(`${API_URL}/auth/google/url`)
+      .then(res => res.json())
+      .then((data: any) => data?.url ? window.location.href = data.url : setAuthError('Could not start Google sign-in.'))
+      .catch(() => setAuthError('Failed to reach auth endpoint.'));
+  };
+
+  const logout = () => {
+    localStorage.removeItem('smm_auth_token');
+    setAuthToken('');
+    setUser(null);
+  };
+
+  // Auth state
+  const [authToken, setAuthToken] = useState<string>(localStorage.getItem('smm_auth_token') || '');
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(!!authToken);
+  const [authError, setAuthError] = useState<string>('');
+
+  const authHeaders = () => ({ 'Authorization': `Bearer ${authToken}` } as Record<string, string>);
+
+  const verifyAuth = () => {
+    const token = localStorage.getItem('smm_auth_token') || '';
+    if (!token) {
+      setAuthLoading(false);
+      return;
+    }
+    setAuthToken(token);
+    fetch(`${API_URL}/auth/verify`, { headers: { Authorization: token } })
+      .then(res => res.json())
+      .then((data: any) => {
+        if (data?.authenticated && data?.user) {
+          setUser(data.user as User);
+        } else {
+          localStorage.removeItem('smm_auth_token');
+          setAuthToken('');
+          setUser(null);
+        }
+      })
+      .catch(() => {
+        localStorage.removeItem('smm_auth_token');
+        setAuthToken('');
+        setUser(null);
+      })
+      .finally(() => setAuthLoading(false));
+  };
+
   // Loaders
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isDeploying, setIsDeploying] = useState<boolean>(false);
 
   const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000/api';
 
-  // Fetch tenants on mount
+  // Bootstrap auth from ?token= callback or stored token.
   useEffect(() => {
-    fetch(`${API_URL}/tenants`)
-      .then(res => res.json())
-      .then((data: Tenant[]) => {
-        setTenants(data);
-        if (data.length > 0) {
-          setSelectedTenantId(data[0].id);
-        }
-      })
-      .catch(err => console.error('Error fetching tenants:', err));
+    const params = new URLSearchParams(window.location.search);
+    const callbackToken = params.get('token');
+    if (callbackToken) {
+      localStorage.setItem('smm_auth_token', callbackToken);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    verifyAuth();
   }, []);
 
   // Fetch products, campaigns, and analytics whenever selected tenant changes
   useEffect(() => {
-    if (!selectedTenantId) return;
+    if (!selectedTenantId || !user) return;
+
+    const headers = authHeaders();
 
     // Fetch Products
-    fetch(`${API_URL}/products?tenantId=${selectedTenantId}`)
+    fetch(`${API_URL}/products?tenantId=${selectedTenantId}`, { headers })
       .then(res => res.json())
       .then((data: Product[]) => {
         setProducts(data);
         if (data.length > 0) {
           setFormProductId(data[0].id);
-          // Prepopulate product fields from selection
           const p = data[0];
           setProductName(p.name);
           setProductDescription(p.description);
@@ -135,7 +247,7 @@ export default function App() {
       });
 
     // Fetch Campaigns
-    fetch(`${API_URL}/campaigns?tenantId=${selectedTenantId}`)
+    fetch(`${API_URL}/campaigns?tenantId=${selectedTenantId}`, { headers })
       .then(res => res.json())
       .then((data: Campaign[]) => {
         setCampaigns(data);
@@ -153,7 +265,7 @@ export default function App() {
     // Setup polling every 5 seconds to get live views updates
     const interval = setInterval(fetchAnalytics, 5000);
     return () => clearInterval(interval);
-  }, [selectedTenantId]);
+  }, [selectedTenantId, user]);
 
   useEffect(() => {
     if (activeTab === 'accounts') {
@@ -162,8 +274,8 @@ export default function App() {
   }, [activeTab]);
 
   const fetchAnalytics = () => {
-    if (!selectedTenantId) return;
-    fetch(`${API_URL}/analytics?tenantId=${selectedTenantId}`)
+    if (!selectedTenantId || !user) return;
+    fetch(`${API_URL}/analytics?tenantId=${selectedTenantId}`, { headers: authHeaders() })
       .then(res => res.json())
       .then((data: Analytics) => {
         setAnalytics(data);
@@ -171,23 +283,23 @@ export default function App() {
       .catch(err => console.error('Error loading analytics:', err));
   };
 
-  const fetchMcpStatus = () => {
-    fetch(`${API_URL}/mcp/status`)
-      .then(res => res.json())
-      .then((data: any) => {
-        setMcpSnapshots(data.snapshots || []);
-      })
-      .catch(err => console.error('Error loading MCP status:', err));
-  };
-
   const fetchLeads = () => {
-    if (!selectedTenantId) return;
-    fetch(`${API_URL}/leads?tenantId=${selectedTenantId}`)
+    if (!selectedTenantId || !user) return;
+    fetch(`${API_URL}/leads?tenantId=${selectedTenantId}`, { headers: authHeaders() })
       .then(res => res.json())
       .then((data: any[]) => {
         setLeads(data);
       })
       .catch(err => console.error('Error loading leads:', err));
+  };
+
+  const fetchMcpStatus = () => {
+    fetch(`${API_URL}/mcp/status`, { headers: authHeaders() })
+      .then(res => res.json())
+      .then((data: any) => {
+        setMcpSnapshots(data.snapshots || []);
+      })
+      .catch(err => console.error('Error loading MCP status:', err));
   };
 
   const handleProductChange = (productId: string) => {
@@ -210,7 +322,7 @@ export default function App() {
       const activeTenant = tenants.find(t => t.id === selectedTenantId);
       const res = await fetch(`${API_URL}/generate-ad-from-theme`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           productName,
           productDescription,
@@ -269,7 +381,7 @@ export default function App() {
       if (formCampaignMode === 'new' && formCampaignName) {
         const campaignRes = await fetch(`${API_URL}/campaigns`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({
             name: formCampaignName,
             tenantId: selectedTenantId
@@ -279,7 +391,7 @@ export default function App() {
         campaignId = campaignData.id;
         
         // Refresh campaigns
-        const freshCampRes = await fetch(`${API_URL}/campaigns?tenantId=${selectedTenantId}`);
+        const freshCampRes = await fetch(`${API_URL}/campaigns?tenantId=${selectedTenantId}`, { headers: authHeaders() });
         const freshCamps = await freshCampRes.json();
         setCampaigns(freshCamps);
         setFormSelectedCampaignId(campaignId);
@@ -288,7 +400,7 @@ export default function App() {
       // 2. Create ad creative & scheduled posts
       await fetch(`${API_URL}/posts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           campaignId,
           productId: formProductId,
@@ -416,10 +528,20 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Sidebar navigation */}
-      <aside className="sidebar">
+      {!user && !authLoading ? (
+        <div className="glass" style={{ padding: '2rem', maxWidth: '480px', margin: '4rem auto', textAlign: 'center' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🚀</div>
+          <h2 style={{ fontWeight: 700 }}>Welcome to OmniSocial AI</h2>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Sign in with Google to access campaigns, leads, and AI marketing.</p>
+          {authError && <p style={{ color: '#ef4444', marginTop: '0.75rem' }}>{authError}</p>}
+          <button className="btn-primary" style={{ marginTop: '1.25rem', width: '100%', justifyContent: 'center' }} onClick={startGoogleLogin}>
+            <span style={{ fontWeight: 700 }}>Sign in with Google</span>
+          </button>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '1rem' }}>By continuing, you agree to the workspace access terms.</p>
+        </div>
+      ) : (
         <div>
-          <div className="brand">
+          <aside className="sidebar">
             <div className="brand-logo">💡</div>
             <span className="brand-name">OmniSocial AI</span>
           </div>
