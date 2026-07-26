@@ -123,6 +123,39 @@ db.exec(`
     FOREIGN KEY(tenantId) REFERENCES Tenant(id) ON DELETE CASCADE,
     FOREIGN KEY(campaignId) REFERENCES Campaign(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS WhatsAppTemplate (
+    id TEXT PRIMARY KEY,
+    tenantId TEXT NOT NULL,
+    name TEXT NOT NULL,
+    body TEXT NOT NULL,
+    variables TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(tenantId) REFERENCES Tenant(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS WhatsAppEngagement (
+    id TEXT PRIMARY KEY,
+    tenantId TEXT NOT NULL,
+    leadId TEXT NOT NULL,
+    templateId TEXT,
+    type TEXT NOT NULL,
+    direction TEXT,
+    status TEXT NOT NULL DEFAULT 'queued',
+    toPhone TEXT NOT NULL,
+    fromPhone TEXT,
+    messageSid TEXT,
+    errorMessage TEXT,
+    contentPreview TEXT,
+    sentAt TEXT,
+    readAt TEXT,
+    repliedAt TEXT,
+    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(tenantId) REFERENCES Tenant(id) ON DELETE CASCADE,
+    FOREIGN KEY(leadId) REFERENCES Lead(id) ON DELETE CASCADE
+  );
 `);
 
 // Expose query helper methods that mimic basic ORM operations
@@ -145,11 +178,30 @@ export const dbHelper = {
     }
   },
   users: {
+    findMany: (tenantId: string) => {
+      const stmt = db.prepare('SELECT * FROM User WHERE tenantId = ? ORDER BY createdAt DESC');
+      return stmt.all(tenantId) as any[];
+    },
+    findById: (id: string) => {
+      const stmt = db.prepare('SELECT * FROM User WHERE id = ?');
+      return stmt.get(id) as any;
+    },
     create: (data: { email: string; name: string; role: string; tenantId: string }) => {
       const id = randomUUID();
       const stmt = db.prepare('INSERT INTO User (id, email, name, role, tenantId) VALUES (?, ?, ?, ?, ?)');
       stmt.run(id, data.email, data.name, data.role, data.tenantId);
       return { id, ...data };
+    },
+    update: (id: string, data: Record<string, any>) => {
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (data.email !== undefined) { sets.push('email = ?'); vals.push(data.email); }
+      if (data.name !== undefined) { sets.push('name = ?'); vals.push(data.name); }
+      if (data.role !== undefined) { sets.push('role = ?'); vals.push(data.role); }
+      if (!sets.length) return;
+      vals.push(id);
+      const stmt = db.prepare(`UPDATE User SET ${sets.join(', ')} WHERE id = ?`);
+      stmt.run(...vals);
     }
   },
   products: {
@@ -307,15 +359,42 @@ export const dbHelper = {
     }
   },
   leads: {
-    create: (data: { tenantId: string; name?: string; email?: string; phone?: string; source?: string; score?: number; status?: string; notes?: string }) => {
+    create: (data: { tenantId: string; name?: string; email?: string; phone?: string; source?: string; score?: number; status?: string; notes?: string; consentWhatsapp?: boolean }) => {
       const id = randomUUID();
-      const stmt = db.prepare('INSERT INTO Lead (id, tenantId, name, email, phone, source, score, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      stmt.run(id, data.tenantId, data.name || null, data.email || null, data.phone || null, data.source || null, data.score || 0, data.status || 'new', data.notes || null);
+      const stmt = db.prepare('INSERT INTO Lead (id, tenantId, name, email, phone, source, score, status, notes, consentWhatsapp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      stmt.run(id, data.tenantId, data.name || null, data.email || null, data.phone || null, data.source || null, data.score ?? 0, data.status || 'new', data.notes || null, data.consentWhatsapp ? 1 : 0);
       return { id, ...data };
     },
     findMany: (tenantId: string) => {
       const stmt = db.prepare('SELECT * FROM Lead WHERE tenantId = ? ORDER BY createdAt DESC');
       return stmt.all(tenantId);
+    },
+    findById: (id: string) => {
+      const stmt = db.prepare('SELECT * FROM Lead WHERE id = ?');
+      return stmt.get(id) as any;
+    },
+    update: (id: string, data: Record<string, any>) => {
+      const sets: string[] = [];
+      const vals: any[] = [];
+      const map: Record<string, any> = {};
+      if (data.name !== undefined) { sets.push('name = ?'); vals.push(data.name || null); }
+      if (data.email !== undefined) { sets.push('email = ?'); vals.push(data.email || null); }
+      if (data.phone !== undefined) { sets.push('phone = ?'); vals.push(data.phone || null); }
+      if (data.source !== undefined) { sets.push('source = ?'); vals.push(data.source || null); }
+      if (data.score !== undefined) { sets.push('score = ?'); vals.push(data.score ?? 0); }
+      if (data.status !== undefined) { sets.push('status = ?'); vals.push(data.status); }
+      if (data.notes !== undefined) { sets.push('notes = ?'); vals.push(data.notes || null); }
+      if (data.consentWhatsapp !== undefined) { sets.push('consentWhatsapp = ?'); vals.push(data.consentWhatsapp ? 1 : 0); }
+      if (data.optOutAt !== undefined) { sets.push('optOutAt = ?'); vals.push(data.optOutAt || null); }
+      if (data.utmSource !== undefined) { sets.push('utmSource = ?'); vals.push(data.utmSource || null); }
+      if (data.utmMedium !== undefined) { sets.push('utmMedium = ?'); vals.push(data.utmMedium || null); }
+      if (data.utmCampaign !== undefined) { sets.push('utmCampaign = ?'); vals.push(data.utmCampaign || null); }
+      if (data.utmContent !== undefined) { sets.push('utmContent = ?'); vals.push(data.utmContent || null); }
+      if (data.utmTerm !== undefined) { sets.push('utmTerm = ?'); vals.push(data.utmTerm || null); }
+      if (!sets.length) return;
+      vals.push(id);
+      const stmt = db.prepare(`UPDATE Lead SET ${sets.join(', ')} WHERE id = ?`);
+      stmt.run(...vals);
     }
   },
   campaignExperiment: {
@@ -328,6 +407,64 @@ export const dbHelper = {
     findMany: (tenantId: string) => {
       const stmt = db.prepare('SELECT * FROM CampaignExperiment WHERE tenantId = ?');
       return stmt.all(tenantId);
+    }
+  },
+  templates: {
+    create: (data: { tenantId: string; name: string; body: string; variables?: string; status?: string }) => {
+      const id = randomUUID();
+      const stmt = db.prepare('INSERT INTO WhatsAppTemplate (id, tenantId, name, body, variables, status) VALUES (?, ?, ?, ?, ?, ?)');
+      stmt.run(id, data.tenantId, data.name, data.body, data.variables || null, data.status || 'active');
+      return { id, ...data };
+    },
+    findMany: (tenantId: string) => {
+      const stmt = db.prepare('SELECT * FROM WhatsAppTemplate WHERE tenantId = ? ORDER BY createdAt DESC');
+      return stmt.all(tenantId);
+    },
+    findById: (id: string) => {
+      const stmt = db.prepare('SELECT * FROM WhatsAppTemplate WHERE id = ?');
+      return stmt.get(id) as any;
+    },
+    update: (id: string, data: Record<string, any>) => {
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (data.name !== undefined) { sets.push('name = ?'); vals.push(data.name); }
+      if (data.body !== undefined) { sets.push('body = ?'); vals.push(data.body); }
+      if (data.variables !== undefined) { sets.push('variables = ?'); vals.push(data.variables || null); }
+      if (data.status !== undefined) { sets.push('status = ?'); vals.push(data.status); }
+      if (!sets.length) return;
+      vals.push(id);
+      const stmt = db.prepare(`UPDATE WhatsAppTemplate SET ${sets.join(', ')} WHERE id = ?`);
+      stmt.run(...vals);
+    }
+  },
+  engagements: {
+    create: (data: { tenantId: string; leadId: string; templateId?: string; type: string; direction?: string; toPhone: string; fromPhone?: string; contentPreview?: string; status?: string }) => {
+      const id = randomUUID();
+      const stmt = db.prepare('INSERT INTO WhatsAppEngagement (id, tenantId, leadId, templateId, type, direction, status, toPhone, fromPhone, contentPreview) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      stmt.run(id, data.tenantId, data.leadId, data.templateId || null, data.type, data.direction || null, data.status || 'queued', data.toPhone, data.fromPhone || null, data.contentPreview || null);
+      return { id, ...data };
+    },
+    findManyByTenant: (tenantId: string, filters?: { leadId?: string; templateId?: string; status?: string }) => {
+      let sql = 'SELECT * FROM WhatsAppEngagement WHERE tenantId = ?';
+      const vals: any[] = [tenantId];
+      if (filters?.leadId) { sql += ' AND leadId = ?'; vals.push(filters.leadId); }
+      if (filters?.templateId) { sql += ' AND templateId = ?'; vals.push(filters.templateId); }
+      if (filters?.status) { sql += ' AND status = ?'; vals.push(filters.status); }
+      sql += ' ORDER BY createdAt DESC';
+      const stmt = db.prepare(sql);
+      return stmt.all(...vals) as any[];
+    },
+    markSent: (id: string, platformMessageId?: string) => {
+      const stmt = db.prepare('UPDATE WhatsAppEngagement SET status = ?, sentAt = ?, messageSid = ? WHERE id = ?');
+      stmt.run('sent', new Date().toISOString(), platformMessageId || null, id);
+    },
+    markRead: (id: string) => {
+      const stmt = db.prepare('UPDATE WhatsAppEngagement SET status = ?, readAt = ? WHERE id = ?');
+      stmt.run('read', new Date().toISOString(), id);
+    },
+    markReplied: (id: string) => {
+      const stmt = db.prepare('UPDATE WhatsAppEngagement SET status = ?, repliedAt = ? WHERE id = ?');
+      stmt.run('replied', new Date().toISOString(), id);
     }
   }
 };

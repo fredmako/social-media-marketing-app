@@ -17,6 +17,9 @@ model Tenant {
   users      User[]
   products   Product[]
   campaigns  Campaign[]
+  leads      Lead[]
+  templates  WhatsAppTemplate[]
+  engagements WhatsAppEngagement[]
 }
 
 model User {
@@ -82,4 +85,72 @@ model AnalyticsSnapshot {
   likes      Int
   shares     Int
   recordedAt DateTime @default(now())
+}
+
+model BusinessProfile {
+  id         String   @id @default(uuid())
+  tenantId   String
+  productName String
+  description String
+  targetAudience String
+  brandVoice String?
+  offerType  String?
+  primaryPain String?
+  primaryGain String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Lead {
+  id               String    @id @default(uuid())
+  tenantId         String
+  name             String?
+  email            String?
+  phone            String?
+  source           String?
+  score            Int       @default(0)
+  status           String    @default("new")
+  notes            String?
+  consentWhatsapp  Boolean   @default(false)
+  optOutAt         DateTime?
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  utmContent       String?
+  utmTerm          String?
+  createdAt        DateTime  @default(now())
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  engagements      WhatsAppEngagement[]
+}
+
+model WhatsAppTemplate {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  body        String
+  variables   String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  engagements WhatsAppEngagement[]
+}
+
+model WhatsAppEngagement {
+  id                String   @id @default(uuid())
+  tenantId          String
+  leadId            String
+  templateId        String?
+  type              String
+  direction         String?
+  status            String   @default("queued")
+  toPhone           String
+  fromPhone         String?
+  messageSid        String?
+  errorMessage      String?
+  contentPreview    String?
+  sentAt            DateTime?
+  readAt            DateTime?
+  repliedAt         DateTime?
+  createdAt         DateTime @default(now())
 }
