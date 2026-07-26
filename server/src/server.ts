@@ -122,6 +122,40 @@ app.post('/api/tenants', (req, res) => {
   }
 });
 
+app.get('/api/users', (req, res) => {
+  try {
+    const { tenantId } = req.query;
+    if (!tenantId) return res.status(400).json({ error: 'tenantId required' });
+    res.json(dbHelper.users.findMany(String(tenantId)));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users', (req, res) => {
+  try {
+    const { email, name, role, tenantId } = req.body;
+    if (!email || !name || !role || !tenantId) return res.status(400).json({ error: 'email, name, role, and tenantId are required' });
+    const user = dbHelper.users.create({ email, name, role, tenantId });
+    res.status(201).json(user);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/users/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = dbHelper.users.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    dbHelper.users.update(id, req.body);
+    const updated = dbHelper.users.findById(id);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/products', (req, res) => {
   try {
     const { tenantId } = req.query;
@@ -260,9 +294,20 @@ app.get('/api/business-profiles', (req, res) => {
 
 app.post('/api/leads', (req, res) => {
   try {
-    const { tenantId, name, email, phone, source, score, status, notes } = req.body;
-    const lead = dbHelper.leads.create({ tenantId, name, email, phone, source, score, status, notes });
+    const { tenantId, name, email, phone, source, score, status, notes, consentWhatsapp } = req.body;
+    const lead = dbHelper.leads.create({ tenantId, name, email, phone, source, score, status, notes, consentWhatsapp });
     res.status(201).json(lead);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/facility-lookup', (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q) return res.status(400).json({ error: 'q is required' });
+    const results = Array.from(new Set(['Alpha Medical Center', 'Beta Health Clinic', 'Gamma Diagnostics', q])).slice(0, 10).map(name => ({ name }));
+    res.json({ query: q, results });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -274,6 +319,96 @@ app.get('/api/leads', (req, res) => {
     if (!tenantId) return res.status(400).json({ error: 'tenantId required' });
     const leads = dbHelper.leads.findMany(String(tenantId));
     res.json(leads);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/leads/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const lead = dbHelper.leads.findById(id);
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    dbHelper.leads.update(id, req.body);
+    const updated = dbHelper.leads.findById(id);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Prospects aliases
+app.get('/api/prospects', (req, res) => {
+  try {
+    const { tenantId, status, source, q } = req.query;
+    if (!tenantId) return res.status(400).json({ error: 'tenantId required' });
+    let leads = dbHelper.leads.findMany(String(tenantId));
+    if (typeof status === 'string') leads = leads.filter((l: any) => l.status === status);
+    if (typeof source === 'string') leads = leads.filter((l: any) => l.source === source);
+    if (typeof q === 'string' && q.trim()) {
+      const term = String(q).toLowerCase();
+      leads = leads.filter((l: any) => [l.name, l.email, l.phone, l.notes].some((v: string) => (v || '').toLowerCase().includes(term)));
+    }
+    res.json(leads);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/prospects', (req, res) => {
+  try {
+    const { tenantId, name, email, phone, source, score, notes, consentWhatsapp, utmSource, utmMedium, utmCampaign, utmContent, utmTerm } = req.body;
+    if (!phone && !email) return res.status(400).json({ error: 'Provide phone or email for a prospect' });
+    const lead = dbHelper.leads.create({ tenantId, name, email, phone, source, score, notes, consentWhatsapp: !!consentWhatsapp });
+    if (utmSource) dbHelper.leads.update(lead.id, { utmSource, utmMedium: utmMedium || null, utmCampaign: utmCampaign || null, utmContent: utmContent || null, utmTerm: utmTerm || null });
+    const created = dbHelper.leads.findById(lead.id);
+    res.status(201).json(created);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/templates', (req, res) => {
+  try {
+    const { tenantId, name, body, variables, status } = req.body;
+    if (!tenantId || !name || !body) return res.status(400).json({ error: 'tenantId, name, and body are required' });
+    const tpl = dbHelper.templates.create({ tenantId, name, body, variables, status });
+    res.status(201).json(tpl);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/whatsapp/templates', (req, res) => {
+  try {
+    const { tenantId } = req.query;
+    if (!tenantId) return res.status(400).json({ error: 'tenantId required' });
+    res.json(dbHelper.templates.findMany(String(tenantId)));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/send', async (req, res) => {
+  try {
+    const { tenantId, leadId, templateId, text, fromPhone } = req.body;
+    if (!leadId || !text) return res.status(400).json({ error: 'leadId and text required' });
+    const lead = dbHelper.leads.findById(leadId);
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    if (lead.optOutAt) return res.status(400).json({ error: 'Lead opted out' });
+    const eng = dbHelper.engagements.create({ tenantId: lead.tenantId, leadId, templateId, type: 'send', direction: 'outbound', toPhone: lead.phone || '', fromPhone, contentPreview: text?.slice(0, 200) });
+    dbHelper.engagements.markSent(eng.id, `mock_mq_${Math.random().toString(36).slice(2, 10)}`);
+    res.status(201).json({ id: eng.id, status: 'sent', platformMessageId: `mock_mq_${eng.id}` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/whatsapp/engagements', (req, res) => {
+  try {
+    const { tenantId, leadId, templateId, status } = req.query;
+    if (!tenantId) return res.status(400).json({ error: 'tenantId required' });
+    res.json(dbHelper.engagements.findManyByTenant(String(tenantId), { leadId: typeof leadId === 'string' ? leadId : undefined, templateId: typeof templateId === 'string' ? templateId : undefined, status: typeof status === 'string' ? status : undefined }));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -351,7 +486,7 @@ app.get('/auth/google/callback', async (req, res) => {
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: 'authorization_code' })
+      body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: 'authorization_code' } as any) as any
     });
     if (!tokenRes.ok) {
       const text = await tokenRes.text();
@@ -379,7 +514,7 @@ app.get('/auth/google/callback', async (req, res) => {
   }
 });
 
-app.post('/auth/verify', (req, res) => {
+app.post('/auth/verify', async (req, res) => {
   const auth = req.headers.authorization || '';
   const token = auth.replace('Bearer ', '').trim();
   if (!token) return res.status(401).json({ authenticated: false });
