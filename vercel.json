@@ -1,5 +1,5 @@
 {
-  "nodeVersion": "22.x",
+  "engines": { "node": "22.x" },
   "installCommand": "cd client && npm install",
   "buildCommand": "cd client && VITE_BACKEND_URL=https://api.social-mcp.me npm run build",
   "outputDirectory": "client/dist",
