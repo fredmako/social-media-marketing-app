@@ -534,6 +534,13 @@ export default function App() {
                   <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                   MCP Integrations
                 </div>
+                <div
+                  className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('admin')}
+                >
+                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a1 1 0 011 1.397l-7 10a1 1 0 01-1.397-.242L3 13.5V10a1 1 0 011-1h2a1 1 0 000-2H4a3 3 0 00-3 3v3.5a3 3 0 003 3h14a3 3 0 003-3V10a3 3 0 00-3-3h-2a1 1 0 000 2h2a1 1 0 011 1v3.5a1 1 0 01-1 1H7.414l6.586-4.707a1 1 0 011-1.397z" /></svg>
+                  User Management
+                </div>
               </nav>
             </div>
 
